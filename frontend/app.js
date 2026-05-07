@@ -35,18 +35,20 @@ let currentRoom = '';
 let typingTimeout = null;
 let activeTypers = new Set();
 let typingDisplayTimeout = null;
+let backendOrigin = '';
 
 // Routing Logic
 const urlParams = new URLSearchParams(window.location.search);
 let roomParam = urlParams.get('room');
+const backendParam = urlParams.get('backend');
 
 if (!roomParam) {
     // Auto-generate private room ID
     roomParam = 'hq-' + Math.random().toString(36).substring(2, 8);
-    window.history.replaceState(null, '', '?room=' + roomParam);
 }
 currentRoom = normalizeRoomCode(roomParam);
-window.history.replaceState(null, '', '?room=' + currentRoom);
+backendOrigin = resolveBackendOrigin(backendParam);
+updateBrowserUrl();
 
 // Initialization
 const savedUser = sessionStorage.getItem('echohq_user');
@@ -63,7 +65,7 @@ loginForm.addEventListener('submit', (e) => {
     if (name) {
         currentUsername = name;
         currentRoom = requestedRoom;
-        window.history.replaceState(null, '', '?room=' + encodeURIComponent(currentRoom));
+        updateBrowserUrl();
         sessionStorage.setItem('echohq_user', name);
         initApp();
     }
@@ -182,9 +184,7 @@ function initApp() {
 }
 
 function initWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Dynamically connect to the same host and port used for serving HTTP
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const wsUrl = getWebSocketUrl();
     ws = new WebSocket(wsUrl);
     
     ws.onopen = () => {
@@ -234,7 +234,7 @@ function joinRoom(roomCode) {
 
     const oldRoom = currentRoom;
     currentRoom = roomCode;
-    window.history.replaceState(null, '', '?room=' + encodeURIComponent(currentRoom));
+    updateBrowserUrl();
 
     currentRoomTitle.innerHTML = `<i class='bx bx-lock-alt'></i> ${currentRoom}`;
     sessionIdDisplay.textContent = currentRoom;
@@ -386,4 +386,42 @@ function normalizeRoomCode(rawCode) {
         .slice(0, 32);
 
     return cleaned || 'hq-' + Math.random().toString(36).substring(2, 8);
+}
+
+function resolveBackendOrigin(rawParam) {
+    const stored = localStorage.getItem('echohq_backend_origin');
+    const candidate = (rawParam || stored || '').trim();
+    const clean = sanitizeBackendOrigin(candidate);
+    if (clean) {
+        localStorage.setItem('echohq_backend_origin', clean);
+        return clean;
+    }
+    return window.location.origin;
+}
+
+function sanitizeBackendOrigin(value) {
+    if (!value) return '';
+    try {
+        const parsed = new URL(value);
+        if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+        return parsed.origin;
+    } catch (_) {
+        return '';
+    }
+}
+
+function getWebSocketUrl() {
+    const origin = backendOrigin || window.location.origin;
+    const parsed = new URL(origin);
+    const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProtocol}//${parsed.host}/ws`;
+}
+
+function updateBrowserUrl() {
+    const params = new URLSearchParams();
+    params.set('room', currentRoom);
+    if (backendOrigin && backendOrigin !== window.location.origin) {
+        params.set('backend', backendOrigin);
+    }
+    window.history.replaceState(null, '', `?${params.toString()}`);
 }
