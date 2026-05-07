@@ -6,9 +6,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-# Set up paths for frontend
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-FRONTEND_DIR = os.path.join(PROJECT_ROOT, 'frontend')
+# Set up paths for frontend. In some deployments (e.g. backend-only service),
+# frontend files may not exist locally; backend should still run for WebSocket/API.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
+FRONTEND_EXISTS = os.path.isdir(FRONTEND_DIR)
 
 app = FastAPI()
 
@@ -198,9 +200,16 @@ async def websocket_endpoint(websocket: WebSocket):
 # (sometimes StaticFiles doesn't default to index.html properly depending on config)
 @app.get("/")
 async def root():
-    return FileResponse(os.path.join(FRONTEND_DIR, 'index.html'))
+    if FRONTEND_EXISTS:
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    return {
+        "service": "EchoChat backend",
+        "status": "ok",
+        "message": "Frontend not bundled in this deployment. Use your Vercel frontend URL."
+    }
 
-app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+if FRONTEND_EXISTS:
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
 def get_lan_ip() -> str:
