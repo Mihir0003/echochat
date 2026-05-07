@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoChat - HQ</title>
     <!-- Modern Typography -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Orbitron:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <!-- BoxIcons -->
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
@@ -30,6 +30,10 @@
                     <i class='bx bxs-user-circle'></i>
                     <input type="text" id="username-input" placeholder="Callsign" required autocomplete="off" maxlength="20">
                 </div>
+                <div class="input-group">
+                    <i class='bx bx-hash'></i>
+                    <input type="text" id="login-room-input" placeholder="Enter Room Code (example: hq-92zqrn)" autocomplete="off" maxlength="32">
+                </div>
                 <button type="submit" class="btn-primary glow-effect">
                     <span>Initialize Sequence</span>
                     <i class='bx bx-rocket'></i>
@@ -49,6 +53,16 @@
             <div style="margin-top: 2rem; text-align: center;">
                 <p class="section-label" style="margin-top: 0;">Secured Matrix</p>
                 <h4 id="session-id-display" style="color: var(--clr-primary); font-family: monospace; font-size: 1.1rem; letter-spacing: 1px; margin-bottom: 1.5rem; background: rgba(0,0,0,0.3); padding: 0.75rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">...</h4>
+                <p style="color: var(--clr-text-muted); font-size: 0.8rem; margin-bottom: 0.7rem;">
+                    Share this room code. Friend enters it on login and joins same room.
+                </p>
+                <div class="input-group" style="margin-bottom: 0.7rem;">
+                    <i class='bx bx-hash'></i>
+                    <input type="text" id="room-code-input" placeholder="Enter room code" autocomplete="off" maxlength="32">
+                </div>
+                <button id="btn-join-room" class="btn-primary glow-effect" style="font-size: 0.9rem; padding: 0.75rem; margin-bottom: 0.7rem;">
+                    <i class='bx bx-link-alt'></i> Join Room
+                </button>
                 <button id="btn-copy-link" class="btn-primary glow-effect" style="font-size: 0.95rem; padding: 0.75rem;">
                     <i class='bx bx-copy'></i> Copy Invite Link
                 </button>
@@ -67,6 +81,13 @@
                     <div class="status-dot"></div> Connecting...
                 </div>
             </header>
+            <div class="border-bottom" style="padding: 10px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <span style="font-size: 0.78rem; color: var(--clr-text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Join Friend Room</span>
+                <input type="text" id="top-room-code-input" placeholder="Enter code like hq-54zf4a" autocomplete="off" maxlength="32" style="flex: 1; min-width: 170px; min-height: 38px; border-radius: 10px; border: 1px solid rgba(26, 101, 160, 0.28); background: rgba(255,255,255,0.9); padding: 0 10px; color: var(--clr-text);">
+                <button id="btn-top-join-room" class="btn-send glow-effect" type="button" style="min-width: 116px;">
+                    <i class='bx bx-link-alt'></i> Join
+                </button>
+            </div>
 
             <div id="messages-container" class="messages-container">
                 <!-- Messages go here -->
@@ -78,6 +99,13 @@
             </div>
 
             <div class="chat-input-area border-top">
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 0.76rem; color: var(--clr-text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Enter Room Code</span>
+                    <input type="text" id="bottom-room-code-input" placeholder="Example: hq-54zf4a" autocomplete="off" maxlength="32" style="flex: 1; min-width: 160px; min-height: 34px; border-radius: 8px; border: 1px solid rgba(20, 99, 156, 0.22); background: rgba(255,255,255,0.86); color: var(--clr-text); padding: 0 10px;">
+                    <button id="btn-bottom-join-room" class="btn-send glow-effect" type="button" style="width: auto; min-width: 88px; border-radius: 999px; height: 34px; padding: 0 12px;">
+                        Join
+                    </button>
+                </div>
                 <form id="chat-form" class="chat-form">
                     <input type="text" id="message-input" placeholder="Message #general... (Try /whisper User Message)" autocomplete="off" required>
                     <button type="submit" class="btn-send glow-effect">

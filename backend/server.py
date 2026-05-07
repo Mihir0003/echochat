@@ -1,5 +1,6 @@
 import os
 import json
+import socket
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -202,11 +203,31 @@ async def root():
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
+def get_lan_ip() -> str:
+    """Best-effort LAN IP discovery for local network sharing instructions."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # No traffic is sent to this address; it is used to infer the outbound interface.
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        sock.close()
+
+
 if __name__ == "__main__":
     if not os.path.exists(FRONTEND_DIR):
         os.makedirs(FRONTEND_DIR)
-        
+
+    host = os.environ.get("HOST", "0.0.0.0")
+    # Cloud providers use the PORT environment variable. Local default is 8085.
+    port = int(os.environ.get("PORT", 8085))
+    lan_ip = get_lan_ip()
+
     print("Starting EchoChat FastAPI server...")
-    # Cloud providers use the PORT environment variable. Defaults to 8000.
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
+    print(f"Bind address: {host}:{port}")
+    print(f"Open on this machine: http://localhost:{port}")
+    print(f"Open from another device on same Wi-Fi: http://{lan_ip}:{port}")
+
+    uvicorn.run("server:app", host=host, port=port, reload=False)

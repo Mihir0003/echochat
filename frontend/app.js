@@ -2,6 +2,7 @@
 const loginModal = document.getElementById('login-modal');
 const loginForm = document.getElementById('login-form');
 const usernameInput = document.getElementById('username-input');
+const loginRoomInput = document.getElementById('login-room-input');
 
 const appContainer = document.getElementById('app-container');
 const connectionStatus = document.getElementById('connection-status');
@@ -15,6 +16,12 @@ const userCount = document.getElementById('user-count');
 const currentRoomTitle = document.getElementById('current-room-title');
 
 const sessionIdDisplay = document.getElementById('session-id-display');
+const roomCodeInput = document.getElementById('room-code-input');
+const btnJoinRoom = document.getElementById('btn-join-room');
+const topRoomCodeInput = document.getElementById('top-room-code-input');
+const btnTopJoinRoom = document.getElementById('btn-top-join-room');
+const bottomRoomCodeInput = document.getElementById('bottom-room-code-input');
+const btnBottomJoinRoom = document.getElementById('btn-bottom-join-room');
 const btnCopyLink = document.getElementById('btn-copy-link');
 const copyToast = document.getElementById('copy-toast');
 
@@ -38,23 +45,25 @@ if (!roomParam) {
     roomParam = 'hq-' + Math.random().toString(36).substring(2, 8);
     window.history.replaceState(null, '', '?room=' + roomParam);
 }
-currentRoom = roomParam;
+currentRoom = normalizeRoomCode(roomParam);
+window.history.replaceState(null, '', '?room=' + currentRoom);
 
 // Initialization
 const savedUser = sessionStorage.getItem('echohq_user');
 if (savedUser) {
-    currentUsername = savedUser;
-    initApp();
-} else {
-    loginModal.classList.add('active');
+    usernameInput.value = savedUser;
 }
+loginModal.classList.add('active');
 
 // Event Listeners
 loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const name = usernameInput.value.trim();
+    const requestedRoom = normalizeRoomCode(loginRoomInput.value || currentRoom);
     if (name) {
         currentUsername = name;
+        currentRoom = requestedRoom;
+        window.history.replaceState(null, '', '?room=' + encodeURIComponent(currentRoom));
         sessionStorage.setItem('echohq_user', name);
         initApp();
     }
@@ -116,6 +125,42 @@ btnCopyLink.addEventListener('click', () => {
     });
 });
 
+btnJoinRoom.addEventListener('click', () => {
+    const nextRoom = normalizeRoomCode(roomCodeInput.value);
+    joinRoom(nextRoom);
+});
+
+btnTopJoinRoom.addEventListener('click', () => {
+    const nextRoom = normalizeRoomCode(topRoomCodeInput.value);
+    joinRoom(nextRoom);
+});
+
+btnBottomJoinRoom.addEventListener('click', () => {
+    const nextRoom = normalizeRoomCode(bottomRoomCodeInput.value);
+    joinRoom(nextRoom);
+});
+
+roomCodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        btnJoinRoom.click();
+    }
+});
+
+topRoomCodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        btnTopJoinRoom.click();
+    }
+});
+
+bottomRoomCodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        btnBottomJoinRoom.click();
+    }
+});
+
 
 // WebSocket Implementation
 function initApp() {
@@ -127,6 +172,10 @@ function initApp() {
         
         currentRoomTitle.innerHTML = `<i class='bx bx-lock-alt'></i> ${currentRoom}`;
         sessionIdDisplay.textContent = currentRoom;
+        roomCodeInput.value = currentRoom;
+        topRoomCodeInput.value = currentRoom;
+        bottomRoomCodeInput.value = currentRoom;
+        loginRoomInput.value = currentRoom;
         
         initWebSocket();
     }, 300);
@@ -178,6 +227,31 @@ function initWebSocket() {
         updateUsersSidebar([currentUsername]);
         setTimeout(initWebSocket, 3000);
     };
+}
+
+function joinRoom(roomCode) {
+    if (!roomCode || roomCode === currentRoom) return;
+
+    const oldRoom = currentRoom;
+    currentRoom = roomCode;
+    window.history.replaceState(null, '', '?room=' + encodeURIComponent(currentRoom));
+
+    currentRoomTitle.innerHTML = `<i class='bx bx-lock-alt'></i> ${currentRoom}`;
+    sessionIdDisplay.textContent = currentRoom;
+    roomCodeInput.value = currentRoom;
+    topRoomCodeInput.value = currentRoom;
+    bottomRoomCodeInput.value = currentRoom;
+    messagesContainer.innerHTML = '';
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'switch_room',
+            room: currentRoom,
+            from: oldRoom
+        }));
+    } else {
+        appendSystemMessage(`Switched to #${currentRoom}. Reconnecting...`);
+    }
 }
 
 function processIncomingMessage(data) {
@@ -301,4 +375,15 @@ function escapeHTML(str) {
     const temp = document.createElement('div');
     temp.textContent = str;
     return temp.innerHTML;
+}
+
+function normalizeRoomCode(rawCode) {
+    const cleaned = (rawCode || '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9_-]/g, '')
+        .slice(0, 32);
+
+    return cleaned || 'hq-' + Math.random().toString(36).substring(2, 8);
 }
