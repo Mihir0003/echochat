@@ -1,8 +1,10 @@
 import os
 import json
+import uuid
 import socket
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import aiofiles
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -11,6 +13,16 @@ from fastapi.responses import FileResponse
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
 FRONTEND_EXISTS = os.path.isdir(FRONTEND_DIR)
+UPLOADS_DIR = os.path.join(PROJECT_ROOT, "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+    ".mp3", ".wav", ".ogg", ".m4a", ".aac",
+    ".mp4", ".webm", ".mov",
+    ".pdf", ".txt", ".doc", ".docx", ".zip",
+}
+MAX_UPLOAD_SIZE = 15 * 1024 * 1024  # 15 MB
 
 app = FastAPI()
 
@@ -66,14 +78,17 @@ async def broadcast_users_in_room(room: str):
         except Exception:
             pass
 
-async def send_whisper(sender_ws: WebSocket, sender_name: str, target_username: str, text: str):
+async def send_whisper(sender_ws: WebSocket, sender_name: str, target_username: str, text: str, attachments=None):
     """Send a private message to a specific user and echo back to sender."""
-    encoded = json.dumps({
+    payload = {
         'type': 'whisper',
         'sender': sender_name,
         'text': text,
         'to': target_username
-    })
+    }
+    if attachments:
+        payload['attachments'] = attachments
+    encoded = json.dumps(payload)
     
     target_found = False
     targets = [ws for ws, info in clients.items() if info['username'] == target_username]
@@ -167,7 +182,8 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == 'whisper':
                 target = data.get('target')
                 text = data.get('text')
-                await send_whisper(websocket, sender, target, text)
+                attachments = data.get('attachments')
+                await send_whisper(websocket, sender, target, text, attachments)
                 
             elif msg_type == 'typing':
                 await broadcast_to_room(current_room, {
@@ -194,6 +210,47 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # -------- HTTP Server --------
+
+def _detect_attachment_type(filename: str, content_type: str) -> str:
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"} or content_type.startswith("image/"):
+        return "image"
+    if ext in {".mp3", ".wav", ".ogg", ".m4a", ".aac"} or content_type.startswith("audio/"):
+        return "audio"
+    if ext in {".mp4", ".webm", ".mov"} or content_type.startswith("video/"):
+        return "video"
+    return "file"
+
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type '{ext}' is not allowed")
+
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=400, detail="File exceeds 15 MB limit")
+
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    dest_path = os.path.join(UPLOADS_DIR, safe_name)
+
+    async with aiofiles.open(dest_path, "wb") as out_file:
+        await out_file.write(content)
+
+    attachment_type = _detect_attachment_type(file.filename, file.content_type or "")
+    return {
+        "url": f"/uploads/{safe_name}",
+        "name": file.filename,
+        "type": attachment_type,
+        "size": len(content),
+    }
+
+
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 # Mount the static frontend directory.
 # First define the root route explicitly to serve index.html 
