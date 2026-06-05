@@ -626,8 +626,9 @@ function normalizeRoomCode(rawCode) {
 }
 
 function resolveBackendOrigin(rawParam) {
+    const configured = window.ECHOCHAT_CONFIG?.backendOrigin || '';
     const stored = localStorage.getItem('echohq_backend_origin');
-    const candidate = (rawParam || stored || '').trim();
+    const candidate = (rawParam || configured || stored || '').trim();
     const clean = sanitizeBackendOrigin(candidate);
     if (clean) {
         localStorage.setItem('echohq_backend_origin', clean);
