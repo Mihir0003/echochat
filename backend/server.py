@@ -5,6 +5,7 @@ import socket
 import uvicorn
 import aiofiles
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -25,6 +26,15 @@ ALLOWED_EXTENSIONS = {
 MAX_UPLOAD_SIZE = 15 * 1024 * 1024  # 15 MB
 
 app = FastAPI()
+
+allowed_origins = [origin.strip() for origin in os.environ.get("ALLOWED_ORIGINS", "*").split(",") if origin.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins or ["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # State Management
 # clients: websocket -> { 'username': str, 'room': str }
@@ -210,6 +220,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # -------- HTTP Server --------
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "EchoChat backend"}
+
 
 def _detect_attachment_type(filename: str, content_type: str) -> str:
     ext = os.path.splitext(filename)[1].lower()

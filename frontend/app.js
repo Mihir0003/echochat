@@ -34,6 +34,8 @@ const btnAttach = document.getElementById('btn-attach');
 const fileInput = document.getElementById('file-input');
 const attachmentPreview = document.getElementById('attachment-preview');
 const mediaPickerEl = document.getElementById('media-picker');
+const btnTheme = document.getElementById('btn-theme');
+const btnThemeLogin = document.getElementById('btn-theme-login');
 
 // App State
 let ws = null;
@@ -46,6 +48,9 @@ let backendOrigin = '';
 let pendingAttachments = [];
 let mediaPicker = null;
 let isUploading = false;
+let reconnectTimer = null;
+let connectionNoticeEl = null;
+let isConnecting = false;
 
 // Routing Logic
 const urlParams = new URLSearchParams(window.location.search);
@@ -66,6 +71,7 @@ if (savedUser) {
     usernameInput.value = savedUser;
 }
 loginModal.classList.add('active');
+initThemeToggle();
 
 // Event Listeners
 loginForm.addEventListener('submit', (e) => {
@@ -399,7 +405,10 @@ function initApp() {
     setTimeout(() => {
         appContainer.classList.remove('hidden');
         myUsernameDisplay.textContent = currentUsername;
-        myAvatar.textContent = currentUsername.charAt(0).toUpperCase();
+        const myAvatarMeta = getUserAvatarMeta(currentUsername);
+        myAvatar.textContent = myAvatarMeta.initial;
+        myAvatar.style.background = myAvatarMeta.bg;
+        myAvatar.style.color = '#ffffff';
         
         currentRoomTitle.innerHTML = `<i class='bx bx-lock-alt'></i> ${currentRoom}`;
         sessionIdDisplay.textContent = currentRoom;
@@ -413,14 +422,46 @@ function initApp() {
     }, 300);
 }
 
-function initWebSocket() {
+async function initWebSocket() {
+    if (isConnecting) return;
+    isConnecting = true;
+
+    const backend = getBackendOrigin();
     const wsUrl = getWebSocketUrl();
+
+    connectionStatus.className = 'connection-status-pill disconnected';
+    connectionStatus.innerHTML = `<div class="status-dot"></div> Connecting...`;
+    setConnectionNotice(`Connecting to ${backend}...`);
+
+    const healthy = await checkBackendHealth(backend);
+    if (!healthy) {
+        connectionStatus.className = 'connection-status-pill disconnected';
+        connectionStatus.innerHTML = `<div class="status-dot"></div> Disconnected`;
+        setConnectionNotice(
+            `Cannot reach chat server at ${backend}. ` +
+            'Deploy the backend on Render, then set ECHOCHAT_BACKEND_URL in Vercel to that URL. Retrying in 5s...'
+        );
+        updateUsersSidebar([currentUsername]);
+        isConnecting = false;
+        scheduleReconnect(5000);
+        return;
+    }
+
+    if (ws) {
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.close();
+    }
+
     ws = new WebSocket(wsUrl);
-    
+
     ws.onopen = () => {
+        isConnecting = false;
+        clearReconnectTimer();
+        clearConnectionNotice();
         connectionStatus.className = 'connection-status-pill connected';
         connectionStatus.innerHTML = `<div class="status-dot"></div> Connected`;
-        
+
         ws.send(JSON.stringify({
             type: 'join',
             sender: currentUsername,
@@ -428,13 +469,14 @@ function initWebSocket() {
             time: new Date().toISOString()
         }));
     };
-    
+
     ws.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
-            
+
             if (data.type === 'history') {
                 messagesContainer.innerHTML = '';
+                connectionNoticeEl = null;
                 data.messages.forEach(msg => processIncomingMessage(msg));
                 scrollToBottom();
             } else if (data.type === 'users_update') {
@@ -445,17 +487,22 @@ function initWebSocket() {
                 processIncomingMessage(data);
                 scrollToBottom();
             }
-        } catch(e) {
-            console.error("Parse error", e);
+        } catch (e) {
+            console.error('Parse error', e);
         }
     };
-    
+
+    ws.onerror = () => {
+        setConnectionNotice(`WebSocket error while connecting to ${wsUrl}. Retrying...`);
+    };
+
     ws.onclose = () => {
+        isConnecting = false;
         connectionStatus.className = 'connection-status-pill disconnected';
         connectionStatus.innerHTML = `<div class="status-dot"></div> Disconnected`;
-        appendSystemMessage('Connection lost. Reconnecting in 3s...');
+        setConnectionNotice(`Connection lost to ${backend}. Reconnecting in 3s...`);
         updateUsersSidebar([currentUsername]);
-        setTimeout(initWebSocket, 3000);
+        scheduleReconnect(3000);
     };
 }
 
@@ -486,9 +533,10 @@ function joinRoom(roomCode) {
 
 function processIncomingMessage(data) {
     if (data.type === 'system') {
-        const timeStr = data.time ? new Date(data.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
-        const timestamp = timeStr ? ` [${timeStr}]` : '';
-        appendSystemMessage(`${data.sender} ${data.text}${timestamp}`);
+        appendSystemMessage(`${data.sender} ${data.text}`, {
+            time: data.time,
+            kind: getSystemMessageKind(data.text)
+        });
     } else if (data.type === 'chat' || data.type === 'whisper') {
         const isSentByMe = (data.sender === currentUsername);
         appendMessage(data, isSentByMe);
@@ -543,41 +591,131 @@ function parseMarkdown(text) {
 function appendMessage(data, isSentByMe) {
     const msgDiv = document.createElement('div');
     const isWhisper = data.type === 'whisper';
-    
+
     let classes = `message ${isSentByMe ? 'sent' : 'received'}`;
     if (isWhisper) classes += ' whisper';
     msgDiv.className = classes;
-    
-    const timeStr = data.time ? new Date(data.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now';
-    
+
+    const timeStr = formatMessageTime(data.time);
+    const avatar = getUserAvatarMeta(data.sender);
+
     let senderDisplay = escapeHTML(data.sender);
     if (isWhisper) {
         senderDisplay = isSentByMe ? `Whisper to ${escapeHTML(data.to)}` : `Whisper from ${escapeHTML(data.sender)}`;
     }
-    
+
     const textHtml = data.text ? parseMarkdown(data.text) : '';
     const attHtml = renderAttachmentsHTML(data.attachments);
     const hasAttachments = !!data.attachments?.length;
+    const avatarHtml = isSentByMe ? '' : `
+        <div class="msg-avatar" style="background:${avatar.bg};">${avatar.initial}</div>
+    `;
 
     msgDiv.innerHTML = `
-        <div class="message-meta">
-            <span class="sender-name">${senderDisplay}</span>
-            <span class="time">${timeStr}</span>
-        </div>
-        <div class="message-content ${hasAttachments && !textHtml ? 'attachments-only' : ''}">
-            ${textHtml || ''}
-            ${attHtml}
+        <div class="message-row">
+            ${avatarHtml}
+            <div class="message-body">
+                <div class="message-meta">
+                    <span class="sender-name">${senderDisplay}</span>
+                </div>
+                <div class="message-content ${hasAttachments && !textHtml ? 'attachments-only' : ''}">
+                    ${textHtml ? `<span class="message-text">${textHtml}</span>` : ''}
+                    ${attHtml}
+                    <span class="message-time">${timeStr}</span>
+                </div>
+            </div>
         </div>
     `;
-    
+
     messagesContainer.appendChild(msgDiv);
 }
 
-function appendSystemMessage(text) {
+function appendSystemMessage(text, options = {}) {
+    const { time = '', kind = 'info', icon = '' } = options;
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message system';
-    msgDiv.innerHTML = `<div class="message-content">${escapeHTML(text)}</div>`;
+
+    const iconClass = icon || getSystemIcon(kind);
+    const badgeClass = kind === 'join' ? 'system-badge join-event' : 'system-badge';
+    const timeStr = time ? formatMessageTime(time) : formatMessageTime(new Date().toISOString());
+
+    msgDiv.innerHTML = `
+        <div class="${badgeClass}">
+            <i class='bx ${iconClass}'></i>
+            <span>${escapeHTML(text)}</span>
+            <span class="system-time">${timeStr}</span>
+        </div>
+    `;
     messagesContainer.appendChild(msgDiv);
+}
+
+function getSystemMessageKind(text) {
+    const value = (text || '').toLowerCase();
+    if (value.includes('joined')) return 'join';
+    if (value.includes('left')) return 'leave';
+    if (value.includes('connection') || value.includes('reconnect') || value.includes('reach chat server')) {
+        return 'connection';
+    }
+    return 'info';
+}
+
+function getSystemIcon(kind) {
+    if (kind === 'join') return 'bx-log-in-circle';
+    if (kind === 'leave') return 'bx-log-out-circle';
+    if (kind === 'connection') return 'bx-wifi-off';
+    return 'bx-info-circle';
+}
+
+function getUserAvatarMeta(username) {
+    const safeName = username || '?';
+    const hue = safeName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+    return {
+        bg: `hsl(${hue}, 58%, 42%)`,
+        initial: safeName.charAt(0).toUpperCase()
+    };
+}
+
+function formatMessageTime(value) {
+    if (!value) {
+        return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function initThemeToggle() {
+    const buttons = [btnTheme, btnThemeLogin].filter(Boolean);
+    buttons.forEach((button) => {
+        button.addEventListener('click', toggleTheme);
+    });
+    applyTheme(getStoredTheme(), false);
+}
+
+function getStoredTheme() {
+    const saved = localStorage.getItem('echohq_theme');
+    if (saved === 'dark' || saved === 'light') return saved;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme, persist = true) {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (persist) {
+        localStorage.setItem('echohq_theme', theme);
+    }
+    updateThemeToggleIcons(theme);
+}
+
+function toggleTheme() {
+    const nextTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(nextTheme);
+}
+
+function updateThemeToggleIcons(theme) {
+    const iconClass = theme === 'dark' ? 'bx-sun' : 'bx-moon';
+    [btnTheme, btnThemeLogin].filter(Boolean).forEach((button) => {
+        button.innerHTML = `<i class='bx ${iconClass}'></i>`;
+        button.setAttribute('aria-label', theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+        button.title = theme === 'dark' ? 'Light mode' : 'Dark mode';
+    });
 }
 
 function updateUsersSidebar(users) {
@@ -588,9 +726,9 @@ function updateUsersSidebar(users) {
         const li = document.createElement('li');
         const isMe = (username === currentUsername);
         
-        const hue = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-        const avatarBg = `hsl(${hue}, 60%, 40%)`;
-        const avatarInitial = username.charAt(0).toUpperCase();
+        const avatar = getUserAvatarMeta(username);
+        const avatarBg = avatar.bg;
+        const avatarInitial = avatar.initial;
 
         li.className = `user-item ${isMe ? 'hidden' : ''}`; // Hide me from list since I have a dedicated profile block up top
         
@@ -625,16 +763,40 @@ function normalizeRoomCode(rawCode) {
     return cleaned || 'hq-' + Math.random().toString(36).substring(2, 8);
 }
 
+function isLocalDevHost() {
+    const host = window.location.hostname;
+    return host === 'localhost' || host === '127.0.0.1';
+}
+
 function resolveBackendOrigin(rawParam) {
-    const configured = window.ECHOCHAT_CONFIG?.backendOrigin || '';
-    const stored = localStorage.getItem('echohq_backend_origin');
-    const candidate = (rawParam || configured || stored || '').trim();
-    const clean = sanitizeBackendOrigin(candidate);
-    if (clean) {
-        localStorage.setItem('echohq_backend_origin', clean);
-        return clean;
+    if (isLocalDevHost()) {
+        return window.location.origin;
     }
+
+    if (rawParam) {
+        const fromParam = sanitizeBackendOrigin(rawParam);
+        if (fromParam) {
+            localStorage.setItem('echohq_backend_origin', fromParam);
+            return fromParam;
+        }
+    }
+
+    const configured = sanitizeBackendOrigin(window.ECHOCHAT_CONFIG?.backendOrigin || '');
+    if (configured && configured !== window.location.origin) {
+        localStorage.setItem('echohq_backend_origin', configured);
+        return configured;
+    }
+
+    const stored = sanitizeBackendOrigin(localStorage.getItem('echohq_backend_origin') || '');
+    if (stored && stored !== window.location.origin) {
+        return stored;
+    }
+
     return window.location.origin;
+}
+
+function getBackendOrigin() {
+    return backendOrigin || window.location.origin;
 }
 
 function sanitizeBackendOrigin(value) {
@@ -649,10 +811,61 @@ function sanitizeBackendOrigin(value) {
 }
 
 function getWebSocketUrl() {
-    const origin = backendOrigin || window.location.origin;
+    const origin = getBackendOrigin();
     const parsed = new URL(origin);
     const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${wsProtocol}//${parsed.host}/ws`;
+}
+
+async function checkBackendHealth(origin) {
+    try {
+        const response = await fetch(`${origin}/health`, { method: 'GET', mode: 'cors' });
+        if (!response.ok) return false;
+        const data = await response.json();
+        return data.status === 'ok';
+    } catch (_) {
+        return false;
+    }
+}
+
+function scheduleReconnect(delayMs) {
+    clearReconnectTimer();
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        initWebSocket();
+    }, delayMs);
+}
+
+function clearReconnectTimer() {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+}
+
+function setConnectionNotice(text) {
+    if (!connectionNoticeEl) {
+        connectionNoticeEl = document.createElement('div');
+        connectionNoticeEl.className = 'message system connection-notice';
+        connectionNoticeEl.innerHTML = `
+            <div class="system-badge connection-notice-badge">
+                <i class='bx bx-wifi-off'></i>
+                <span class="connection-notice-text"></span>
+                <span class="system-time">${formatMessageTime(new Date().toISOString())}</span>
+            </div>
+        `;
+        messagesContainer.appendChild(connectionNoticeEl);
+    }
+    const noticeText = connectionNoticeEl.querySelector('.connection-notice-text');
+    if (noticeText) noticeText.textContent = text;
+    scrollToBottom();
+}
+
+function clearConnectionNotice() {
+    if (connectionNoticeEl) {
+        connectionNoticeEl.remove();
+        connectionNoticeEl = null;
+    }
 }
 
 function updateBrowserUrl() {
