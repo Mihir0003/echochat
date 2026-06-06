@@ -4,11 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoChat - HQ</title>
-    <!-- Modern Typography -->
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Orbitron:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- WhatsApp-style clean typography -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Segoe+UI:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <!-- BoxIcons -->
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <script>
+        (function () {
+            const saved = localStorage.getItem('echohq_theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.setAttribute('data-theme', saved || (prefersDark ? 'dark' : 'light'));
+        })();
+    </script>
 </head>
 <body>
     <div class="bg-mesh">
@@ -25,6 +32,9 @@
                 <h1>EchoHQ</h1>
             </div>
             <p>Connect to the secure global network</p>
+            <button type="button" id="btn-theme-login" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle theme">
+                <i class='bx bx-moon'></i>
+            </button>
             <form id="login-form">
                 <div class="input-group">
                     <i class='bx bxs-user-circle'></i>
@@ -52,7 +62,7 @@
             </div>
             <div style="margin-top: 2rem; text-align: center;">
                 <p class="section-label" style="margin-top: 0;">Secured Matrix</p>
-                <h4 id="session-id-display" style="color: var(--clr-primary); font-family: monospace; font-size: 1.1rem; letter-spacing: 1px; margin-bottom: 1.5rem; background: rgba(0,0,0,0.3); padding: 0.75rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">...</h4>
+                <h4 id="session-id-display" class="session-id-display">...</h4>
                 <p style="color: var(--clr-text-muted); font-size: 0.8rem; margin-bottom: 0.7rem;">
                     Share this room code. Friend enters it on login and joins same room.
                 </p>
@@ -77,8 +87,13 @@
                     <h2 id="current-room-title"><i class='bx bx-hash'></i> general</h2>
                     <p>End-to-end encrypted WebSocket matrix</p>
                 </div>
-                <div class="connection-status-pill" id="connection-status">
-                    <div class="status-dot"></div> Connecting...
+                <div class="header-actions">
+                    <button type="button" id="btn-theme" class="theme-toggle theme-toggle-header" aria-label="Toggle dark mode" title="Toggle theme">
+                        <i class='bx bx-moon'></i>
+                    </button>
+                    <div class="connection-status-pill" id="connection-status">
+                        <div class="status-dot"></div> Connecting...
+                    </div>
                 </div>
             </header>
             <div class="border-bottom" style="padding: 10px 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
@@ -99,19 +114,54 @@
             </div>
 
             <div class="chat-input-area border-top">
-                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
-                    <span style="font-size: 0.76rem; color: var(--clr-text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Enter Room Code</span>
-                    <input type="text" id="bottom-room-code-input" placeholder="Example: hq-54zf4a" autocomplete="off" maxlength="32" style="flex: 1; min-width: 160px; min-height: 34px; border-radius: 8px; border: 1px solid rgba(20, 99, 156, 0.22); background: rgba(255,255,255,0.86); color: var(--clr-text); padding: 0 10px;">
-                    <button id="btn-bottom-join-room" class="btn-send glow-effect" type="button" style="width: auto; min-width: 88px; border-radius: 999px; height: 34px; padding: 0 12px;">
-                        Join
-                    </button>
+                <div class="room-quick-join">
+                    <span class="room-quick-label">Enter Room Code</span>
+                    <input type="text" id="bottom-room-code-input" placeholder="Example: hq-54zf4a" autocomplete="off" maxlength="32" class="room-quick-input">
+                    <button id="btn-bottom-join-room" class="btn-mini-join" type="button">Join</button>
                 </div>
-                <form id="chat-form" class="chat-form">
-                    <input type="text" id="message-input" placeholder="Message #general... (Try /whisper User Message)" autocomplete="off" required>
-                    <button type="submit" class="btn-send glow-effect">
-                        <i class='bx bx-send'></i>
-                    </button>
-                </form>
+
+                <div id="attachment-preview" class="attachment-preview hidden"></div>
+
+                <div class="composer-wrapper">
+                    <div id="media-picker" class="media-picker hidden">
+                        <div id="emoji-panel" class="picker-panel">
+                            <div class="picker-header">
+                                <input type="text" id="emoji-search" class="picker-search" placeholder="Search emojis..." autocomplete="off">
+                            </div>
+                            <div id="emoji-tabs" class="picker-tabs"></div>
+                            <div id="emoji-grid" class="picker-grid emoji-grid"></div>
+                        </div>
+                        <div id="gif-panel" class="picker-panel hidden">
+                            <div class="picker-header picker-header-row">
+                                <input type="text" id="gif-search" class="picker-search" placeholder="Search GIFs..." autocomplete="off">
+                                <button type="button" id="gif-search-btn" class="picker-search-btn" aria-label="Search GIFs">
+                                    <i class='bx bx-search'></i>
+                                </button>
+                            </div>
+                            <div id="gif-grid" class="picker-grid gif-grid"></div>
+                            <div class="picker-footer">Powered by Tenor</div>
+                        </div>
+                    </div>
+
+                    <form id="chat-form" class="chat-form">
+                        <div class="composer-toolbar">
+                            <button type="button" id="btn-emoji" class="composer-btn" title="Emoji" aria-label="Insert emoji">
+                                <i class='bx bx-smile'></i>
+                            </button>
+                            <button type="button" id="btn-gif" class="composer-btn" title="GIF" aria-label="Insert GIF">
+                                <span class="gif-label">GIF</span>
+                            </button>
+                            <button type="button" id="btn-attach" class="composer-btn" title="Attach file" aria-label="Attach file">
+                                <i class='bx bx-paperclip'></i>
+                            </button>
+                            <input type="file" id="file-input" class="hidden" multiple accept="image/*,audio/*,video/*,.pdf,.txt,.doc,.docx,.zip">
+                        </div>
+                        <textarea id="message-input" placeholder="Message #general... (Try /whisper User Message)" autocomplete="off" rows="1"></textarea>
+                        <button type="submit" class="btn-send glow-effect" aria-label="Send message">
+                            <i class='bx bx-send'></i>
+                        </button>
+                    </form>
+                </div>
             </div>
         </main>
 
@@ -139,6 +189,8 @@
         </aside>
     </div>
 
+    <script src="config.js"></script>
+    <script src="media-picker.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
