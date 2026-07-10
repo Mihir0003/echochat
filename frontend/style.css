@@ -817,36 +817,52 @@ body {
     bottom: calc(100% + 8px);
     left: 0;
     width: min(380px, 100%);
-    max-height: 360px;
+    height: 420px;
+    max-height: 420px;
     background: var(--clr-surface);
     border: 1px solid var(--clr-border);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15), 0 8px 10px rgba(0, 0, 0, 0.1);
     overflow: hidden;
     z-index: 50;
-    animation: picker-in 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    animation: picker-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .media-picker {
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
+    [data-theme="dark"] .media-picker {
+        background: rgba(17, 27, 33, 0.88);
+    }
 }
 
 @keyframes picker-in {
     from {
         opacity: 0;
-        transform: translateY(6px);
+        transform: translateY(10px) scale(0.98);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
 .picker-panel {
     display: flex;
     flex-direction: column;
-    max-height: 360px;
+    height: 100%;
+    max-height: 100%;
 }
 
 .picker-header {
-    padding: 10px 12px 6px;
+    padding: 12px;
     background: var(--clr-toolbar);
+    border-bottom: 1px solid var(--clr-border);
 }
 
 .picker-header-row {
@@ -857,75 +873,112 @@ body {
 
 .picker-search {
     width: 100%;
-    height: 36px;
+    height: 38px;
     border-radius: var(--radius-lg);
-    border: none;
+    border: 1px solid var(--clr-border-strong);
     background: var(--clr-input);
-    padding: 0 14px;
+    padding: 0 16px;
     font-size: 0.875rem;
     color: var(--clr-text);
     outline: none;
+    transition: all 0.2s ease;
 }
 
 .picker-search:focus {
-    box-shadow: 0 0 0 1px var(--wa-teal);
+    border-color: var(--wa-teal-light);
+    box-shadow: 0 0 0 3px rgba(0, 168, 132, 0.15);
 }
 
 .picker-search-btn {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border: none;
     border-radius: 50%;
     background: var(--wa-teal);
     color: #ffffff;
     cursor: pointer;
     flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.picker-search-btn:hover {
+    background: var(--wa-teal-light);
+    transform: scale(1.05);
+}
+
+.picker-search-btn:active {
+    transform: scale(0.95);
 }
 
 .picker-tabs {
     display: flex;
     gap: 2px;
-    padding: 4px 10px;
+    padding: 6px 12px;
     overflow-x: auto;
     border-bottom: 1px solid var(--clr-border);
     background: var(--clr-surface);
 }
 
 .picker-tab {
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     cursor: pointer;
     flex-shrink: 0;
-    transition: background 0.15s ease;
+    display: grid;
+    place-items: center;
+    transition: all 0.2s ease;
 }
 
 .picker-tab:hover,
 .picker-tab.active {
     background: var(--clr-picker-tab-hover);
+    transform: scale(1.05);
 }
 
 .picker-grid {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    padding: 8px;
+    padding: 12px;
     background: var(--clr-surface);
+}
+
+/* Custom modern scrollbar for picker grid */
+.picker-grid::-webkit-scrollbar {
+    width: 6px;
+}
+
+.picker-grid::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.picker-grid::-webkit-scrollbar-thumb {
+    background: var(--clr-border-strong);
+    border-radius: 3px;
+}
+
+.picker-grid::-webkit-scrollbar-thumb:hover {
+    background: var(--clr-text-light);
 }
 
 .emoji-grid {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
-    gap: 2px;
-    max-height: 220px;
+    gap: 4px;
+    align-items: start;
 }
 
 .gif-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 6px;
-    max-height: 260px;
+    align-items: start;
 }
 
 .emoji-btn {
@@ -934,63 +987,96 @@ body {
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
-    font-size: 1.35rem;
+    font-size: 1.45rem;
     cursor: pointer;
-    transition: background 0.15s ease;
+    display: grid;
+    place-items: center;
+    transition: background 0.15s ease, transform 0.1s ease;
 }
 
 .emoji-btn:hover {
     background: var(--clr-picker-tab-hover);
+    transform: scale(1.15);
 }
 
 .gif-btn {
+    display: block;
+    width: 100%;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: 8px;
     overflow: hidden;
     padding: 0;
     cursor: pointer;
-    background: var(--clr-toolbar);
-    aspect-ratio: 1;
-    transition: opacity 0.15s ease;
+    position: relative;
+    box-shadow: var(--shadow-sm);
+    background: linear-gradient(
+        90deg,
+        var(--clr-toolbar) 25%,
+        var(--clr-border-strong) 37%,
+        var(--clr-toolbar) 63%
+    );
+    background-size: 400% 100%;
+    animation: shimmer-loading 1.4s ease infinite;
+    transition: transform 0.15s ease,
+                box-shadow 0.15s ease,
+                filter 0.15s ease;
+}
+
+@keyframes shimmer-loading {
+    0% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
 }
 
 .gif-btn img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
     display: block;
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .gif-btn:hover {
-    opacity: 0.9;
+    transform: scale(1.05);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+    filter: brightness(1.05);
+    z-index: 2;
+}
+
+.gif-btn:hover img {
+    transform: scale(1.1);
 }
 
 .picker-empty,
 .picker-loading {
     grid-column: 1 / -1;
     text-align: center;
-    padding: 2rem 1rem;
+    padding: 2.5rem 1rem;
     color: var(--clr-text-muted);
     font-size: 0.875rem;
 }
 
 .gif-load-more {
     display: block;
-    width: calc(100% - 16px);
-    margin: 6px 8px;
-    padding: 0.55rem 0.75rem;
+    width: calc(100% - 24px);
+    margin: 6px 12px 10px;
+    padding: 0.65rem 1rem;
     border: none;
     border-radius: var(--radius-sm);
     background: var(--clr-muted-btn);
     color: var(--clr-text);
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: all 0.15s ease;
 }
 
 .gif-load-more:hover:not(:disabled) {
     background: var(--clr-muted-btn-hover);
+    box-shadow: var(--shadow-sm);
 }
 
 .gif-load-more:disabled {
@@ -999,8 +1085,8 @@ body {
 }
 
 .picker-footer {
-    padding: 6px 12px;
-    font-size: 0.68rem;
+    padding: 8px 12px;
+    font-size: 0.7rem;
     color: var(--clr-text-light);
     text-align: right;
     border-top: 1px solid var(--clr-border);
